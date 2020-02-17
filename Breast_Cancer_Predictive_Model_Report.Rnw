@@ -1,0 +1,615 @@
+\documentclass{article}
+
+\title{Breast Cancer Investigation}
+\date{19/11/18}
+\author{Craig Pirie}
+\usepackage{graphicx}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+  \begin{figure}
+  \centering
+    \includegraphics{ribbon.jpg}
+\end{figure}
+
+  \pagenumbering{gobble}
+  \maketitle
+  \tableofcontents
+\newpage
+  \newpage
+  \pagenumbering{arabic}
+  \section{Data Exploration}
+    \subsection{Dataset Choice}
+    Breast Cancer Prediction Dataset\\
+    Source: https://www.kaggle.com/merishnasuwal/breast-cancer-prediction-dataset
+    \paragraph{Introduction:}
+    I chose this dataset as breast cancer is a huge problem within the world and is a vicious disease that affects so many of us. I would like to see if there is any way we can predict a positive diagnosis of thus disease to aid in the harm reduction of Breast Cancer.
+    \subsection{Problem Statement and Data Exploration}
+    \paragraph{Brief Description:}
+    This dataset contains records of people and information on their breasts such as size and shape alongside their breast cancer diagnosis.
+    \paragraph{Aim and Objectives:}
+    The main aim of this investigation is to use the Breast Cancer Prediction Dataset in order to predict those at risk of Breast Cancer.
+    \paragraph{Data Exploration:} I now begin to explore the data.\\
+    \\The data is loaded from the 'breast cancer data.csv' file into a dataframe called 'df'. Our dataset currently holds missing values as a blank string such as "" but we replace them here with "N/A". \\ 
+  
+<<>>=
+#Import data set from CSV file
+df <- read.csv('Breast Cancer Model.csv', header=T, na.strings = c(""))
+@
+\\I will now check the class distribution of the dataset.
+\begin{figure}
+<<fig1,fig=TRUE>>=
+labelFreqs <- table(df$diagnosis)#Holds frequency of diagnosis in a table
+barplot(labelFreqs,col = gray.colors(3), #Plots a graph from the frequency of diagnosis table
+        main="Diagnosis Frequency") #With grey bars and labelled 'Diagnosis Frequency'
+@
+\caption{Dataframe Class Distribution}
+\end{figure}
+\\We can see here that the diagnosed class is dominant within the dataset as it has almost double the presence than un-diagnosed classes. This means we have a largely unbalanced dataset.\\
+
+I want to know the names of my features so I enter the following command:-
+<<>>=
+names(df) #Names of features
+@
+Our feature names are meanradius, meantexture, meanperimiter, meanarea, meansmoothness and diagnosis.\\
+
+It will be beneficial for us to know the number of rows and columns our data set has.\\
+<<>>=
+nr <- nrow(df) #Counts the number of rows in our dataset and stores in a variable called 'nr'
+nc <- ncol(df) #Counts the number of columns in our dataset and stores in a variable called 'nc'
+cat("Our data set has: ", nr, " Rows and ", nc, " Columns") #Displays number of rows and columns in data set using the 'cat' command.
+@
+\\We can confirm this using the dim command...\\
+<<>>=
+dim(df) #Dimensions of dataset (Number of rows/ Number of columns)
+@
+\\Values match so the values are confirmed\\
+
+\\Lets get a quick description of our dataset\\
+<<>>=
+str(df) #Displays quick description of data set
+head(df) #Displays top 6  records
+tail(df) #Displays bottom 6 records
+@
+\\Now we have an idea of what the data we are working with looks like \\
+
+\\Lets start getting some values that could be useful to know before building our model\\
+<<>>=
+min(df$mean_area) #What is the smallest breast area?
+max(df$mean_area) #What is the largest breast area?
+mean(df$mean_perimeter) #Gets the mean breast perimeter
+median(df$mean_radius) #Gets the median breast radius
+quantile(df$mean_smoothness) #Gets the quantiles for smoothness feature
+summary(df) #Summary of the dataset
+@
+\\The smallest breast area is  143.5 and the largest is 2501\\
+\\The average breast perimeter is 91.9603\\
+\\The median breast radius is 13.37\\
+\\We now have the smoothness values for each quantiles\\
+\\The range of values for texture feature is from 9.71 to 39.28.\\
+\\The dataset summary displays a more in depth array of values for each feature such as the Min, Max and 1st + 3rd Quantiles.\\
+\\
+\\I want to now see if there is a correlation between any features. We will use the 'corrplot' package to do this, as this will visualize them for us. \\
+<<>>=
+library(corrplot) #Loads 'corrplot' package
+cor(df) #'Cor' lots a table of correlation values between features
+@
+\\We can see there are values with a strong correlation but the table isn't quite easy to read so we will now plot a graph\\
+
+\\The bigger the circle indicates a larger correlation value, the bluer the circle indicates a more directly proportional (i.e. a 'cor' value closer to 1. And a redder circle indicates a more inversely proportional relationship (i.e.a 'cor' value closer to -1.)
+<<>>=
+correlations <- cor(df) #Store the correlation table in a variable
+@
+\begin{figure}
+\centering
+<<fig3,fig=TRUE>>=
+corrplot(correlations, method="circle") #Plot the correlations in a graph
+#Represented by circles, using the correlation table for values.
+@
+\caption{Correlation Plot}
+\end{figure}
+\\We can now visually see there are a few features that correlate with each other.\\
+\\
+\\We will disregard the circles along the diagonal of the plot as these values are indicating there is a correlation with themselves which is obvious and unhelpful.\\
+\\We want to know which features correlate with our output feature, (diagnosis), so we will look along that column to see if there are large correlation circles.\\
+\\We can see that every feature has a correlation with diagnosis. The most significant correlation seems to be breast size, in particular breast perimeter, and diagnosis. There is also a smaller correlation in texture and smoothness with diagnosis.\\
+
+    \subsection{Pre-processing}
+    \\We now want to prepare the data before building our model\\
+    \\
+    \\First we will check for missing data, we will be using the 'mlbench' and 'Amelia' packages to do this\\
+<<>>=
+library(Amelia)
+library(mlbench)
+@
+\begin{figure}
+\centering
+<<fig2,fig=TRUE>>=
+missmap(df, col=c("black", "yellow"), legend=TRUE) #Displays chart of missing data
+#Black represents missing data, yellow represtents whole data. We will show a legend too.
+@
+\caption{Missingness Map}
+\end{figure}
+\\We can see from this visualization that there is no missing data, which is what we want\\
+\\To confirm this we will count the amount of data in the dataframe\\
+<<>>=
+na_counts <- sapply(df, function(x) sum(is.na(x))) #Counts how much data is missing
+na_counts #Displays counts of missing data per feature; in a table
+cat("Number of missing pieces of data:", sum(na_counts)) #Displays a message of total missing data count.
+@
+\\The missmap was correct, there was no missing data in the dataframe. So, we do not need to go through the process of removing missing fields.\\
+\\
+\\To make the investigation quicker to carry out and easier to follow we will rename the features to something more meaningful\\
+<<>>=
+#names(df) <- c("Radius","Texture","Perimeter","Area","Smoothness", "Diagnosis") #Renames features to more meaninful headings
+@
+\\we will now check these have been changed correctly\\
+<<>>=
+names(df) #Checks feature names have been changed
+@
+\\Our features are now called 'Radius', 'Texture', 'Area', 'Smoothness', 'Diagnosis'.
+\\
+\\Our dataset is now ready to fit a model with.\\
+  \section{Modelling/ Classification} 
+    \subsection{Subsetting The Data}
+    \\We will build our modelling using training and testing data subsets. So, lets build them.\\
+    \\
+    \\70/30 is a good starting point for a training/testing split so that's what we will use for outs. We know from exploring out data that there are 569 rows in our dataset. 0.7* 569 = 398 (rounded). So that will be the number of rows our training set will pull from our dataframe, the testing subset will take the rest of the rows (So, 569 - 398 = 171).
+<<>>=
+train <- df[1:398,] #Split 70% of dataframe into training subset
+test <- df[399:nrow(df),] #Split 30% of dataframe into testing subset
+@
+\\We will now check to make sure that the subsets have been generated correctly. If they have been made correctly the total number of rows in the testing subset plus the total number of rows in the training subset will equal the number of rows in the dataframe.\\
+\\ So,
+<<>>=
+nrow(train)+nrow(test)==nrow(df) #Checking subsets created succesfully.
+@
+\\The above code returned "TRUE" so the total rows in subsets and dataframe match, meaning they have been created successfully.\\
+\\
+\\We will now check the class distribution of the subsets.\\
+<<>>=
+table(train$diagnosis) #Plotting a table of the class frequencies for training subset.
+table(test$diagnosis) #Plotting a table of the class frequencies for testing subset.
+@
+\\We will visualize these tables for ease\\
+\begin{figure}
+\centering
+<<fig4, fig=TRUE>>=
+barplot(table(train$diagnosis)) #Plots a bargraph of the training class distribution.
+@
+\caption{Training Class Distribution}
+\end{figure}
+\begin{figure}
+\centering
+<<fig5, fig=TRUE>>=
+barplot(table(test$diagnosis)) #Plots a bargraph of the testing class distribution.
+@
+\caption{Testing Class Distribution}
+\end{figure}
+\\We can see here that there is quite an uneven class distribution in our data subsets - we will improve on these and balance them out later on in the next section.\\
+\\
+    \subsection{Building The Model}
+\\Now, we can start building our model...\\
+\\We will be using a logistic regression model to start with.\\
+\\
+<<>>=
+mymodel <- glm(diagnosis~.,family=binomial,data=train) #Build my model using logistic regression method. 'Binomial' means we will have a binary output (0 or 1). Our model will be built learning from the training subset.
+@
+\\Our model has been created.\\
+\\
+\\Lets get a quick description of our model.\\
+\\
+<<>>=
+summary(mymodel) #Getting a description of the model.
+@
+\\****NEEDS RESEARCH***\\
+\\
+    \subsection{Testing And Evaluating}
+\\Now the model will use the testing subset to check that the model works and so we can evaluate it.\\
+\\The code below uses our model to predict the probability of diagnosis of breast cancer of each person in the test subset. The probability of diagnosis of each person is saved in a variable called 'probs'.\\
+<<>>=
+#Calculating predictions using my model (props will hold the probabilities)
+probs <- predict(mymodel,newdata=test,type='response')
+@
+Examine the probabilities
+<<>>=
+head(probs) #Displays the first 5 probabilities.
+@
+\\Now we create a variable called 'predictions' and use the 'probabilities' variable to determine the diagnosis prediction. If the prediction is less than 0.5 then we decide the person does not have breast cancer and if it is over 0.5 we decide they do have breast cancer.\\
+<<>>=
+#Setting the predictions to 0 or 1 based on the probabilities.
+predictions <- ifelse(probs > 0.5,1,0)
+@
+\\Check this has worked.
+<<>>=
+head(predictions) #Displays the first 5 predictions.
+@
+This has returned 1's and 0's so predictions have been set.\\
+\\
+\\Time to calculate the accuracy of our model and there are a few ways to do this.
+\\The first method we will use is taking the average of incorrect predictions out of the total number of predictions made to give us the testing error. 1 minus the testing error gives us the testing accuracy.\\
+\\Calculating and displaying the test error.
+<<>>=
+#Check the prediction against the known diagnosis to determine error.
+test_err <- mean(predictions != test$diagnosis) #Gets an average of the wrong predictions
+print(paste('Testing error:',test_err*100,'%')) #Displays the test error as a percentage.
+@
+\\The test error is quite low here 9.94\% which is a good indication in itself but we still want a value for the accuracy so we can compare with other accuracies later.\\
+\\Get the accuracy by subtracting the test error from one.
+<<>>=
+# Accuracy is calculated by 1 - test error.
+print(paste('Testing accuracy:',(1-test_err)*100,'%')) #Displays accuracy as percentage.
+@
+\\We have quite a high testing accuracy as we can see, 90.16 \%. This tells gives us a clue that our model is working quite well to predict diagnosis outcomes. But, to be sure we will cross-check the accuracy using different methods.\\
+\\Lets create a new dataframe to cross-check the accuracy using a confusion matrix method.\\
+\\The new data frame mimics the testing subset.\\
+\\
+<<>>=
+dfU <- test #Creates a new dataframe called dfU using the test subset.
+@
+\\Add a feature that shows the probabilities and check it's appended correctly.\\
+<<>>=
+dfU$Prob <- probs #Appends the probabilites to the new dataframe
+head(dfU$Prob) #Displays the first 5 probabilities so we know it has been added correctly.
+@
+\\Feature added correctly.\\
+\\
+\\Add another feature to the dataframe that shows the prediction of diagnosis and check that it's added.\\
+<<>>=
+dfU$Pred <- predictions #Appendsthe predictions to the new dataframe
+dfU$Pred #Displays the first 5 predictions to check it has been added correctly.
+@
+\\Prediction feature added fine.\\
+\\
+\\Now we add our last feature for the new dataframe. We will check the predictions against actual diagnosis in the dfU dataframe and store the outcome in the new feature as a '1' for correct predictions and a '0' for incorrect predictions.\\
+\\We will also check that it worked.\\
+<<>>=
+#Checks the predictions against known diagnosis' so we know the number of correct predictions.
+dfU$correct <- ifelse(dfU$diagnosis== dfU$Pred,1,0) #If correct store as 1, if incorrect store as 0.
+dfU$correct #Display the correct feature.
+@
+\\'Correct' feature added properly.\\
+\\
+\\We can now fit a confusion matrix below...\\
+<<>>=
+table(dfU$diagnosis,dfU$Pred) #Confusion Matrix is essentially justa a table of predictions against known outcomes.
+@
+The way we will be double checking the accuracy is by using the confusion matrix and taking an average of the values in the diagonal of the matrix like below.\\
+<<>>=
+#The sum of the diagonal of the table gives us another accuracy.
+accuracy2 <- sum(diag(table(dfU$diagnosis,
+                           dfU$Pred)))/nrow(dfU)*100
+cat("Accuracy is ", accuracy2 , "%") #Display the accuracy.
+@
+\\Check the accuracies are the same\\
+<<>>=
+((1-test_err)*100) == accuracy2 #Checks the accuracies against each other.
+@
+\\'TRUE' is returned so accuracies match and are correct.\\
+\\
+\\Lets get a value for our performance of the model\\
+\\Using the 'ROCR' package to plot an ROC curve we will calculate the area under the curve (auc) to give us another indication as to how our model is performing.\\
+\\
+\\Use the ROCR library.\\
+<<>>=
+library('ROCR') #Loads the 'ROCR' package.
+@
+\\Get the probabilities.\\
+<<>>=
+probs <- predict(mymodel,newdata=test,type='response') #Gets probabilities of the testing subset using our model.
+@
+\\Get the predictions.\\
+<<>>=
+pr <- prediction(probs, test$diagnosis) #Gets the predictions using the probabilities.
+@
+\\Get the True Positive Rate (TPR) and the False Positive Rate (FPR).
+<<>>=
+prf <- performance(pr, measure = "tpr", x.measure = "fpr") #Plots the false positive against the false negatives to get another performance indication. The closer to the top left corner is, the better.
+@
+\\Now we can plot the ROC curve\\
+\begin{figure}
+\centering
+<<fig6, fig=TRUE>>=
+plot(prf) #Plotting the ROC curve.
+@
+\caption{ROC Curve}
+\end{figure}
+\\We can see that performance is quite high here due to the peak of the curve being quite high.\\
+\\Now we have our ROC curve it is time to calculate the area under the curve to get a percentage of performance.\\
+\\
+\\
+<<>>=
+#Computes the area under the curve
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+print(paste('Performance:',auc*100,'%')) #Displays the area under curve as a percentage.
+@
+\\Area under the curve is 99.08\% which is phenomenally high, this indicates we have a highly performing discriminative model.
+\\
+\\Examine the new dataset.\\
+
+<<>>=
+head(dfU) 
+@
+\\
+\\
+\\Write a copy of this new dataframe to an external CSV file for consumption.\\
+<<>>=
+write.csv(dfU,"Breast Cancer Model.csv") #Writing dataframe to a CSV file
+@
+    \subsection{Reporting On And Discussing The Results}
+    \\Accuracy within our model is very high with a testing accuracy of 90\%, a testing error of 9.94\% and a ROC accuracy of 99\%. This tells us our model works very well for the data we fed our model. However, we previously checked from steps taken above that the class distribution isn't equal - so we cannot be certain that our accuracies are reliable. We must further improve our model to evenly distribute the classes.
+  \section{Improving Performance}
+  \subsection{Cross-Validation}
+\\
+\\We need the 'caret' package for this Cross-Validation method\\
+<<>>=
+#CROSS VALIDATION
+library(caret) #Loads the 'caret' package.
+@
+\\We convert the diagnosis features in the subsets to a factor.\\
+<<>>=
+train$diagnosis = as.factor(train$diagnosis) #Converts training to factor.
+test$diagnosis = as.factor(test$diagnosis) #Converts testing to factor.
+@
+<<>>=
+train_control <- trainControl(method='cv', number = 5) #Our cross validation model will use 5 k-folds.
+@
+\\Building our cross-validation model.\\
+<<>>=
+mymodel <- train(diagnosis~., data=train, trControl=train_control, method="glm", family=binomial()) #Building our cross validation model using logistic regression for a binary output.
+@
+\\Get the predictions using the cross-validation model and examine a few of the predictions\\
+<<>>=
+predictions<- predict(mymodel,test[,-ncol(test)]) #Predict, using our model.
+head(predictions) #show the first 5 predictions.
+@
+\\
+\\Append the predictions data to the end of the test subset and examine the new contents of the test subset.\\
+<<>>=
+test<- cbind(test,predictions) #Adding the predictions to the testing subset.
+head(test) #Displaying the first few rows in testing subset.
+@
+\\
+\\
+<<>>=
+results <- confusionMatrix(test$predictions, test$diagnosis) #Plotting a confusing matrix for our cross validated model.
+results #Display the confusion matrix.
+@
+\\Calculate the accuracy of our cross-validation model.\\
+<<>>=
+cat("Accuracy=", ((sum(diag(results$table))/nrow(test)*100)), "%") #Displaying the accuracy by taking the average of the diagonal values in the confusion matrix as a percentage.
+@
+  \subsection{Using Different Metrics For Evaluation}
+  \\Another way to evaluate our model before we work on improving it is to use different metrics\\
+  \\We will create a new function to get different metrics\\
+<<>>=
+## GET METRICS
+getMetrics <- function(TP,FP,TN,FN){
+  TPR=TP/(TP+FN); #Calculates the True Positive Rate
+  FPR=FP/(FP+TN); #Calculates the False Positive Rate
+  TNR=TN/(TN+FP); #Calculates the True Negative Rate
+  FNR=FN/(TP+FN); #Calculates the False Negative Rate
+  ACC=(TP+TN)/((TP+FN)+(FP+TN)); #Calculates the Accuracy
+  SPC=TN/(FP+TN); #Calculates the Specificity
+  SNS=TP/(TP+FN) #Calculates the Sensitivity
+  metrics <- c('True Positive Rate','False Positive Rate','True Negative Rate','False Negative Rate','Accuracy',
+               'Specificity','Sensitivity') #Sets the headers.
+  values <- c(TPR,FPR,TNR,FNR,ACC,SPC,SNS) #Saves the values to a temporary dataframe.
+  values<-(values*100) #Converts the values to a percentage.
+  df <- data.frame(Metrics=metrics,Values=values) #Make a new dataframe with the metrics
+  df #Display the metrics.
+}
+@
+\\This function get the True Positive Rate (TPR), True Negative Rate(TNR), False Positive Rate (FPR), False Negative Rate (FNR), Accuracy (ACC), Specificity (SPC) and the Sensitivity (SNS).\\
+<<>>=
+tmpSet <- data.frame(Actual=test$diagnosis,Predicted=predictions)
+tmpSet$correct <- as.numeric(
+  tmpSet$Actual==tmpSet$Predicted)
+# compute TP, FP, TN, FN
+tp <- tmpSet[tmpSet$Actual=='1' & tmpSet$Predicted=='1',]
+fp <- tmpSet[tmpSet$Actual=='0' & tmpSet$Predicted=='1',]
+tn <- tmpSet[tmpSet$Actual=='0' & tmpSet$Predicted=='0',]
+fn <- tmpSet[tmpSet$Actual=='1' & tmpSet$Predicted=='0',]
+
+results <- getMetrics(nrow(tp),nrow(fp),nrow(tn),nrow(fn)) # call the function
+results #Show metrics
+@
+\subsection{Balancing Our Class Distribution}
+\\We know from checking our class distribution while building our model above that our classes are NOT distributed evenly.\\
+\\So, we need to solve this by ensuring our classes are distributed evenly in our train and test subsets.\\
+\\
+\\The 'caret' and 'dplyr' packages are required for this.\\
+<<>>=
+library('caret') #Loading the 'caret' package.
+library('dplyr') #Loading the 'dplyr' package.
+@
+\\Index is set to allow us to split the data into a 70/30 training and testing split.\\
+<<>>=
+set.seed(101) #Set seed so report is repeatable.
+#Split the data into a 80:20 training/testing split
+splitIndex <- createDataPartition(df$diagnosis, p = .80, list = FALSE,times = 1)
+@
+\\Splitting the data into training and testing subsets.\\
+<<>>=
+training <- df[ splitIndex,] #Set training subset to 80% of data
+testing <- df[-splitIndex,] #Set testing subset to 20% of data
+
+# sample negative examples equal to postive examples
+tSample <-sample_n(training[training$diagnosis==0,],
+                   nrow(training[training$diagnosis==1,]), replace = TRUE)
+# add postive examples from the training set into sample
+tSample <- rbind(tSample,training[training$diagnosis==1,])
+@
+
+\\Visualize the class distribution of the training set\\
+\begin{figure}
+\centering
+<<fig10, fig=TRUE>>=
+barplot(table(tSample$diagnosis)) #Plotting a bargraph of training class distribution
+@
+\caption{Even Class Distribution Graph - Training}
+\end{figure}
+\\Now, the classes are evenly distributed.\\
+\\
+<<>>=
+xSample <-sample_n(testing[testing$diagnosis==0,],
+                   nrow(testing[testing$diagnosis==1,]), replace = TRUE)
+# add postive examples from the training set into sample
+xSample <- rbind(xSample,testing[testing$diagnosis==1,])
+@
+\\
+\\Checking the class distribution of the test set\\
+\begin{figure}
+\centering
+<<fig11, fig=TRUE>>=
+barplot(table(xSample$diagnosis)) #Plotting a bargraph of testing class distribution
+@
+\caption{Even Class Distribution Graph - Testing}
+\end{figure}
+\\We can see the classes are now evenly distributed.\\
+<<>>=
+ctrl <- trainControl(method = "cv", number = 5) #Cross Validate using 5 k-folds
+tSample$diagnosis <- as.factor(tSample$diagnosis) #Convert tSample to factor
+xSample$diagnosis <- as.factor(xSample$diagnosis) #Convert xSample to factor
+mymodel <- glm(diagnosis~.,family=binomial,data=tSample) #Create a new model
+
+# test
+probs <- predict(mymodel,newdata=xSample,type='response') #Getting probabilities
+predictions <- ifelse(probs > 0.5,1,0) #Setting predictions using probabilities
+
+accuracy <- mean(predictions==xSample$diagnosis) #Calculating accuracy by taking the average of correct predictions against known diagnosis.
+accuracy <- round(accuracy*100,digits = 2) #Rounding the accuracy to 2 decimal points.
+cat('Accuracy is: ',accuracy, "%") #Displaying accuracy as a percentage.
+@
+\subsection{Fitting A Different Model And Comparing The Results}
+\\Random Forest is another model that could work for our investigation as it works with binary classification.\\
+\\
+\\We need the 'caret' and 'randomForest' packages to do this...\\
+<<>>=
+require(randomForest) #Loading the 'randomForest' package.
+@
+\\The seed is set so we can get the same output each time the model is run\\
+<<>>=
+set.seed(101) #Setting the seed to repeat the random forest and get the same results.
+@
+\\
+\\The training set is created for the random forest model\\
+<<>>=
+train=sample(1:nrow(df),398) #Using 70% of dataset data
+df.rf=randomForest(diagnosis~., data = df, subset = train) #Building our random forest model.
+df.rf #Displaying our random forest model.
+@
+\begin{figure}
+\centering
+<<fig7, fig=TRUE>>=
+plot(df.rf) #Displaying a graph of our random forest model performance.
+@
+\caption{Random Forest Performance}
+\end{figure}
+<<warning>>=
+oob.err=double(13) 
+test.err=double(13)
+
+for(mtry in 1:13){
+  rf=randomForest(diagnosis~mean_area, data=df, subset = train,mtry=mtry,ntree=400)
+  oob.err[mtry] =rf$mse[400]
+  
+  pred<-predict(rf,df[-train,])
+  test.err[mtry]= with(df[-train,], mean((diagnosis - pred)^2))
+}
+
+@
+\\Calculating the random forest model error\\
+<<>>=
+cat("Test Error=",(sum(test.err)/10)*100,"%") #Displaying test error as a percentage.
+@
+\\Calculating the random forest model accuracy\\
+<<>>=
+cat("Accuracy=",(1 - sum(test.err)/10)*100,"%") #Displaying test accuracy as a percentage.
+@
+\\The accuracy is for the random model is quite high again however this is NOT an improvement from the accuracy given from the logistic regression model which is 90%.\\
+\\
+\\So, we will not continue using the random forest model.\\
+<<>>=
+oob.err
+#pred
+@
+\subsection{Changing The Dataset Partitions}
+\\Another method that might improve our model is changing the partitions, i.e. changing the split of the dataframe into different training/testing subset sizes.\\
+\\
+\\First we will try a 90 training and a 10 testing split.\\
+<<>>=
+train <- df[1:511,] #Setting training subset to 90% of dataset
+test <- df[512:nrow(df),] #Setting testing subset to 10% of dataset
+@
+\\511, is 90 of dataframe, testing takes the rest of the rows.\\
+\\
+\\Now we will check, the same way as before, that they were split correctly.\\
+<<>>=
+nrow(train)+nrow(test)==nrow(df) #Checking subsets are formed correctly.
+@
+\\The code returns TRUE so number of rows in splits is the same as that of in the dataframe, so data has been split correctly.\\
+\\
+\\Now we shall check the class distribution of the data\\.
+<<>>=
+table(train$diagnosis) #Stores training class distribution in a table.
+table(test$diagnosis) #Stores testing class distribution in a table.
+@
+\\...and in a visual form.\\
+\begin{figure}
+\centering
+<<fig8, fig=TRUE>>=
+barplot(table(train$diagnosis)) #Plots a bargraph of testing class distribution
+@
+\caption{Final Model Training Class Distribution}
+\end{figure}
+\begin{figure}
+\centering
+<<fig9, fig=TRUE>>=
+barplot(table(test$diagnosis)) #Plots a bargraph of training class distribution
+@
+\caption{Final Model Testing Class Distribution}
+\end{figure}
+\\Again, we can see that the class distribution is still unbalanced so we need to consider this when interpreting our results at the end of this test.\\
+\\
+\\Fitting a new logistic regression model using our new data split.\\
+<<>>=
+mymodel <- glm(diagnosis~mean_area,family=binomial,data=train) #Building a new logistic regression model for binary output.
+@
+\\Our new model is now ready.\\
+\\
+\\Have a look at the new model.\\
+<<>>=
+summary(mymodel) #Displays a description of our new model.
+@
+\\
+\\Calculating the probabilities and having a look at a sample of them.\\
+<<>>=
+probabilities <- predict(mymodel,newdata=test,type='response') #Perform predictions using our model
+head(probabilities) #Displaying first 5 probabilities.
+@
+\\
+\\Determining the predictions using the probabilities again.\\
+<<>>=
+predictions <- ifelse(probabilities > 0.5,1,0) #Setting predictions to 0 or 1 depending on probabilities.
+@
+\\
+\\Calculating the test error and accuracy again.\\
+<<>>=
+test_err <- mean(predictions != test$diagnosis) #Computing test error by checking average if incorrect predictions.
+
+#Displaying testing error and testing accuracy
+print(paste('Testing Error:', (test_err*100), '% ,', 'Testing Accuracy:',(1-test_err)*100,'%'))
+@
+\\We can see here splitting the dataframe up so that we have more training data improves our performance by 4.8, which is quite a significant increase. We will continue using this model with this data split.\\
+\subsection{Report On Improvements And Final Model}
+\\From our experiments we can see that using balanced data and more training data increases our accuracy. We attempted to fit a random forest model but the results showed a decline in accuracy so we will stick with our logistic regression model with a training : testing ratio of 80:20 using data with balanced class distribution, such as our model in section 3.3. This is now a highly performing model.\\
+
+  \section{Conclusion}
+  \\Overall, our model was a success. The aim to predict breast cancer diagnosis in patients given data on their breasts has been achieved. We started with a high accuracy of and managed to improve on the model to gain a improvement of on our model. I believe that the report written on the investigation is clear, reproducible and easy to follow and I am satisfied with the outcome of this investigation and have confidence in my model. It was an enjoyable and interesting topic and I hope you gain as much pleasure reading it as I did producing it!
+  \section{Appendix}
+     \begin{appendix}
+  \listoffigures
+\end{appendix}
+\end{document}
